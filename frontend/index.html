@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>對弈 · Go AI</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Source+Sans+3:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&family=Noto+Serif+SC:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div class="grain"></div>
+    <main class="app">
+      <aside class="rail rail-left">
+        <div class="title-block">
+          <div class="title-vertical" aria-hidden="true">對&nbsp;弈</div>
+          <div class="title-en">Go AI · Phase 1</div>
+        </div>
+        <div class="rail-meta">
+          <div class="meta-row">
+            <span class="meta-key">Opponent</span>
+            <span class="meta-val">Random walker</span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-key">Board</span>
+            <span class="meta-val" id="meta-size">9 × 9</span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-key">Komi</span>
+            <span class="meta-val" id="meta-komi">7.5</span>
+          </div>
+        </div>
+      </aside>
+
+      <section class="center">
+        <div class="board-frame">
+          <svg id="board" viewBox="0 0 600 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Go board">
+            <defs>
+              <radialGradient id="stone-black" cx="35%" cy="35%" r="65%">
+                <stop offset="0%" stop-color="#5a5550"/>
+                <stop offset="55%" stop-color="#1f1c1a"/>
+                <stop offset="100%" stop-color="#0a0908"/>
+              </radialGradient>
+              <radialGradient id="stone-white" cx="35%" cy="35%" r="70%">
+                <stop offset="0%" stop-color="#ffffff"/>
+                <stop offset="65%" stop-color="#ede7d8"/>
+                <stop offset="100%" stop-color="#bdb39d"/>
+              </radialGradient>
+              <filter id="stone-shadow" x="-20%" y="-20%" width="140%" height="140%">
+                <feGaussianBlur in="SourceAlpha" stdDeviation="1.2"/>
+                <feOffset dx="0.5" dy="1.5" result="off"/>
+                <feComponentTransfer><feFuncA type="linear" slope="0.4"/></feComponentTransfer>
+                <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+              </filter>
+            </defs>
+            <g id="board-bg"></g>
+            <g id="board-grid"></g>
+            <g id="board-stars"></g>
+            <g id="board-labels"></g>
+            <g id="board-stones"></g>
+            <g id="board-territory"></g>
+            <g id="board-marks"></g>
+            <g id="board-hover"></g>
+          </svg>
+        </div>
+
+        <div class="status-bar">
+          <div class="status-turn" id="status-turn">
+            <span class="turn-dot turn-black"></span>
+            <span class="turn-text">Black to play</span>
+          </div>
+          <div class="status-captures">
+            <span class="cap-pair"><span class="cap-dot cap-black"></span><span id="cap-black">0</span></span>
+            <span class="cap-pair"><span class="cap-dot cap-white"></span><span id="cap-white">0</span></span>
+          </div>
+        </div>
+      </section>
+
+      <aside class="rail rail-right">
+        <div class="panel panel-controls">
+          <div class="size-select" id="size-select">
+            <span class="size-label">Board</span>
+            <div class="size-options">
+              <button class="size-opt is-active" data-size="9">9</button>
+              <button class="size-opt" data-size="13">13</button>
+              <button class="size-opt" data-size="19">19</button>
+            </div>
+          </div>
+          <button class="btn btn-primary" id="btn-new">New game</button>
+          <div class="btn-row">
+            <button class="btn" id="btn-pass">Pass</button>
+            <button class="btn" id="btn-undo">Undo</button>
+            <button class="btn btn-danger" id="btn-resign">Resign</button>
+          </div>
+          <button class="btn btn-wide" id="btn-estimate">Estimate score</button>
+        </div>
+
+        <div class="panel panel-score" id="panel-score" style="display:none;">
+          <div class="panel-title">Score <span class="panel-title-sub">形勢</span></div>
+          <div class="score-bar">
+            <div class="score-fill score-fill-black" id="score-fill-black"></div>
+            <div class="score-fill score-fill-white" id="score-fill-white"></div>
+          </div>
+          <div class="score-rows">
+            <div class="score-row">
+              <span class="score-side"><span class="cap-dot cap-black"></span>Black</span>
+              <span class="score-val mono" id="score-black">—</span>
+            </div>
+            <div class="score-row">
+              <span class="score-side"><span class="cap-dot cap-white"></span>White</span>
+              <span class="score-val mono" id="score-white">—</span>
+            </div>
+          </div>
+          <div class="score-verdict" id="score-verdict">—</div>
+          <div class="score-note" id="score-note"></div>
+        </div>
+
+        <div class="panel panel-ai" id="panel-ai">
+          <div class="panel-title">AI thinking</div>
+          <div class="ai-grid">
+            <div class="ai-cell">
+              <div class="ai-key">Last move</div>
+              <div class="ai-val mono" id="ai-lastmove">—</div>
+            </div>
+            <div class="ai-cell">
+              <div class="ai-key">Sims</div>
+              <div class="ai-val mono" id="ai-sims">—</div>
+            </div>
+            <div class="ai-cell">
+              <div class="ai-key">Winrate</div>
+              <div class="ai-val mono" id="ai-winrate">—</div>
+            </div>
+            <div class="ai-cell">
+              <div class="ai-key">Mode</div>
+              <div class="ai-val" id="ai-mode">MCTS</div>
+            </div>
+          </div>
+          <div class="ai-pulse" id="ai-pulse" aria-hidden="true">
+            <span class="pulse-dot"></span> thinking
+          </div>
+        </div>
+
+        <div class="panel panel-history">
+          <div class="panel-title">Kifu <span class="panel-title-sub">棋譜</span></div>
+          <ol class="kifu" id="kifu"></ol>
+        </div>
+      </aside>
+    </main>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
