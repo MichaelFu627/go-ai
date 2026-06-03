@@ -34,4 +34,7 @@ export const api = {
   undo:      (id) => request(`/game/${id}/undo`,   { method: 'POST' }),
   aiMove:    (id) => request(`/game/${id}/ai-move`, { method: 'POST' }),
   score:     (id) => request(`/game/${id}/score`),
+
+  listKifus: (limit = 200) => request(`/kifus?limit=${limit}`),
+  getKifu:   (kifuId) => request(`/kifus/${kifuId}`),
 };

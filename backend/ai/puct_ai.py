@@ -261,6 +261,77 @@ class PUCTPlayer:
 
         return self._decide(root, game)
 
+    def search_distribution(self, game: Game) -> tuple:
+        """Like select_move, but returns the full MCTS visit distribution pi
+        plus a chosen move. This is what self-play needs:
+          - pi: shape (policy_size,) numpy array, the training target for the
+                policy head (visit-count distribution at the root).
+          - move: the move actually played, sampled (if temperature>0) or argmax.
+          - winrate: root mover's win estimate from MCTS, for logging.
+
+        Caller passes a Game; we build the same root_pos as select_move.
+        """
+        from features import move_to_index, policy_size
+        import numpy as np
+
+        last_mv = None
+        opp_last = None
+        plays = [m for m in game.history if m.kind == "play"]
+        if plays:
+            last_mv = (plays[-1].row, plays[-1].col)
+        if len(plays) >= 2:
+            opp_last = (plays[-2].row, plays[-2].col)
+
+        root_pos = PUCTPosition(
+            board=game.board.copy(), to_move=game.turn,
+            passes=game.consecutive_passes, komi=game.komi,
+            last_move=last_mv, opp_last_move=opp_last,
+        )
+        if root_pos.is_terminal:
+            # Trivial: all probability on pass.
+            n = policy_size(game.size)
+            pi = np.zeros(n, dtype=np.float32)
+            pi[n - 1] = 1.0
+            return pi, None, 0.5
+
+        root = PUCTNode(root_pos.to_move, last_move=last_mv)
+        self._expand(root, root_pos)
+        if self.add_dirichlet:
+            self._add_root_noise(root)
+
+        for _ in range(self.simulations):
+            self._simulate(root, root_pos.copy())
+
+        # Build pi from root edge visits.
+        n = policy_size(game.size)
+        pi = np.zeros(n, dtype=np.float32)
+        for e in root.edges:
+            pi[move_to_index(e.move, game.size)] = e.N
+        if pi.sum() > 0:
+            pi = pi / pi.sum()
+        else:
+            pi[-1] = 1.0  # degenerate fallback: pass
+
+        # Choose the move: either sample by N^(1/T) or take argmax.
+        if self.temperature and self.temperature > 1e-3:
+            powered = (pi + 1e-9) ** (1.0 / self.temperature)
+            powered = powered / powered.sum()
+            idx = self.rng.choice(n, p=powered)
+        else:
+            idx = int(np.argmax(pi))
+        from features import index_to_move
+        move = index_to_move(idx, game.size)
+
+        # Winrate from root mover's POV.
+        total_n = sum(e.N for e in root.edges)
+        if total_n > 0:
+            avg_q = sum(e.W for e in root.edges) / total_n
+            winrate = (avg_q + 1.0) / 2.0
+        else:
+            winrate = 0.5
+
+        return pi, move, winrate
+
     def _simulate(self, root: PUCTNode, pos: PUCTPosition):
         """One PUCT simulation: select → expand+evaluate → backup."""
         path = []  # list of (node, edge)

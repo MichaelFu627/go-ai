@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+
+# Node
+node_modules/
+
+# macOS
+.DS_Store
+
+# Training artifacts (huge, regenerable)
+checkpoints/
+*.pt
+*.pth
+*.log
+
+# IDE
+.vscode/
+.idea/

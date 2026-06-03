@@ -87,6 +87,13 @@
               <button class="size-opt" data-size="19">19</button>
             </div>
           </div>
+          <div class="size-select" id="ai-select">
+            <span class="size-label">Opponent</span>
+            <div class="size-options">
+              <button class="ai-opt is-active" data-ai="mcts" title="Pure MCTS (no neural network)">MCTS</button>
+              <button class="ai-opt" data-ai="neural" title="Trained neural network + PUCT search">Trained</button>
+            </div>
+          </div>
           <button class="btn btn-primary" id="btn-new">New game</button>
           <div class="btn-row">
             <button class="btn" id="btn-pass">Pass</button>
@@ -94,6 +101,7 @@
             <button class="btn btn-danger" id="btn-resign">Resign</button>
           </div>
           <button class="btn btn-wide" id="btn-estimate">Estimate score</button>
+          <button class="btn btn-wide" id="btn-kifus">Kifu library <span style="opacity:0.5;font-family:var(--serif-cjk);font-size:11px;">棋譜庫</span></button>
         </div>
 
         <div class="panel panel-score" id="panel-score" style="display:none;">

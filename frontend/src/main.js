@@ -1,5 +1,6 @@
 import { api } from './api.js';
 import { BoardView } from './board.js';
+import { KifuViewer } from './kifu_viewer.js';
 
 const BLACK = 1, WHITE = 2;
 const colorToInt = (s) => s === 'black' ? BLACK : s === 'white' ? WHITE : null;
@@ -25,6 +26,7 @@ const els = {
   toast:        document.getElementById('toast'),
   sizeSelect:   document.getElementById('size-select'),
   btnEstimate:  document.getElementById('btn-estimate'),
+  btnKifus:     document.getElementById('btn-kifus'),
   panelScore:   document.getElementById('panel-score'),
   scoreFillBlack: document.getElementById('score-fill-black'),
   scoreFillWhite: document.getElementById('score-fill-white'),
@@ -37,6 +39,7 @@ const els = {
 /* ----- state ----- */
 let state = null;
 let selectedSize = 9;
+let selectedAi = 'mcts';
 let territoryShown = false;
 
 /* ----- board view ----- */
@@ -204,9 +207,12 @@ async function triggerAI() {
 async function newGame() {
   try {
     hideScore();
-    state = await api.newGame({ size: selectedSize, komi: null, aiColor: 'white', aiType: 'mcts' });
+    state = await api.newGame({ size: selectedSize, komi: null, aiColor: 'white', aiType: selectedAi });
     render();
     renderAIInfo(null);
+    // Reflect current opponent in the AI info panel.
+    const modeEl = document.getElementById('ai-mode');
+    if (modeEl) modeEl.textContent = selectedAi === 'neural' ? 'Trained' : 'MCTS';
   } catch (e) {
     toast(e.message);
   }
@@ -316,11 +322,35 @@ els.btnUndo.addEventListener('click', doUndo);
 els.btnResign.addEventListener('click', doResign);
 els.btnEstimate.addEventListener('click', toggleEstimate);
 
+// Kifu library — lazy-init the viewer on first open so it doesn't add DOM
+// nodes (and a global key listener) until the user actually wants it.
+let kifuViewer = null;
+els.btnKifus.addEventListener('click', () => {
+  if (!kifuViewer) kifuViewer = new KifuViewer();
+  kifuViewer.open();
+});
+
 els.sizeSelect.addEventListener('click', (e) => {
   const btn = e.target.closest('.size-opt');
   if (!btn) return;
   selectSize(Number(btn.dataset.size));
 });
+
+// AI opponent selector — switching starts a fresh game using the new opponent.
+const aiSelect = document.getElementById('ai-select');
+if (aiSelect) {
+  aiSelect.addEventListener('click', (e) => {
+    const btn = e.target.closest('.ai-opt');
+    if (!btn) return;
+    const newAi = btn.dataset.ai;
+    if (newAi === selectedAi) return;
+    selectedAi = newAi;
+    aiSelect.querySelectorAll('.ai-opt').forEach(b => {
+      b.classList.toggle('is-active', b.dataset.ai === newAi);
+    });
+    newGame();
+  });
+}
 
 // start
 newGame();

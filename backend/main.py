@@ -24,6 +24,10 @@ from board import IllegalMove, BLACK, WHITE, EMPTY
 from game import Game
 from ai.random_ai import RandomAI
 from ai.mcts_ai import MCTSAI
+from ai.puct_ai import PUCTPlayer
+from net import GoNet
+import torch
+from pathlib import Path
 
 
 app = FastAPI(title="Go AI", version="0.1")
@@ -56,8 +60,12 @@ class NewGameRequest(BaseModel):
     komi: Optional[float] = None  # None → pick a size-appropriate default
     ai_color: Optional[str] = "white"  # "black" | "white" | None
     seed: Optional[int] = None
-    ai_type: str = "mcts"          # "mcts" | "random"
+    ai_type: str = "mcts"          # "mcts" | "random" | "neural"
     ai_strength: Optional[int] = None  # MCTS simulations; None → size default
+
+
+# Where the trained network lives — produced by train.py.
+NEURAL_CHECKPOINT = Path("checkpoints/best.pt")
 
 
 # Conventional komi values per board size (Chinese rules, area scoring).
@@ -131,11 +139,41 @@ def new_game(req: NewGameRequest):
 
     if req.ai_type == "random":
         AIS[game_id] = RandomAI(seed=req.seed)
+    elif req.ai_type == "neural":
+        if not NEURAL_CHECKPOINT.exists():
+            raise HTTPException(
+                status_code=400,
+                detail=f"No trained model at {NEURAL_CHECKPOINT}. Run train.py first.")
+        net = _load_neural_net(req.size)
+        sims = req.ai_strength or DEFAULT_SIMS.get(req.size, 200)
+        AIS[game_id] = PUCTPlayer(
+            net=net, simulations=sims, c_puct=1.5,
+            device="cpu", add_dirichlet=False, temperature=0.0,
+            seed=req.seed,
+        )
     else:
         sims = req.ai_strength or DEFAULT_SIMS.get(req.size, 200)
         AIS[game_id] = MCTSAI(simulations=sims, seed=req.seed)
 
     return _serialize_state(game_id, game)
+
+
+# Cache the loaded network so we don't reload from disk per game.
+_NEURAL_CACHE: dict[int, GoNet] = {}
+
+
+def _load_neural_net(board_size: int) -> GoNet:
+    """Load (or reuse cached) GoNet from NEURAL_CHECKPOINT for the given size."""
+    if board_size in _NEURAL_CACHE:
+        return _NEURAL_CACHE[board_size]
+    net = GoNet(board_size=board_size)
+    # weights_only=False because our checkpoint pickles a Python dict with meta.
+    payload = torch.load(NEURAL_CHECKPOINT, map_location="cpu", weights_only=False)
+    state = payload["model_state"] if "model_state" in payload else payload
+    net.load_state_dict(state)
+    net.eval()
+    _NEURAL_CACHE[board_size] = net
+    return net
 
 
 @app.get("/api/game/{game_id}/state")
@@ -221,3 +259,30 @@ def score(game_id: str):
 @app.get("/api/health")
 def health():
     return {"ok": True, "games": len(GAMES)}
+
+
+# ---- kifu (saved self-play games) ---------------------------------------
+
+# Where saved self-play kifus live. The training loop writes them here under
+# checkpoints/games/. The path is relative to wherever the backend was started
+# from — we resolve to absolute on first use.
+from pathlib import Path
+from kifu import list_games as _list_kifus, load_game as _load_kifu
+
+KIFU_DIR = Path("checkpoints/games")
+
+
+@app.get("/api/kifus")
+def list_kifus(limit: int = 200):
+    """Return a list of saved self-play games, newest first.
+    Each item carries metadata only — not the move list — to keep this cheap."""
+    return {"kifus": _list_kifus(KIFU_DIR, limit=limit), "dir": str(KIFU_DIR.resolve())}
+
+
+@app.get("/api/kifus/{kifu_id}")
+def get_kifu(kifu_id: str):
+    """Return one full kifu (with all moves) by id."""
+    data = _load_kifu(KIFU_DIR, kifu_id)
+    if data is None:
+        raise HTTPException(status_code=404, detail="kifu not found")
+    return data
